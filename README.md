@@ -55,6 +55,15 @@ Das Skript lädt den Feed, filtert Beiträge, die älter als 180 Tage sind, und 
 - `OPENAI_API_KEY`: API-Schlüssel zum Aufruf von OpenAI
 - `OPENAI_MODEL`: Modellname, z. B. `gpt-5-mini`
 
+### KI-Einleitung & Hashtags
+Wenn du OpenAI nutzt, weise das Modell an, eine kurze, einladende Einleitung mit genau 50 Wörtern zu verfassen, die Lust aufs Lesen des Artikels macht. Ergänze anschließend ein paar thematisch passende Hashtags, zum Beispiel:
+
+- `#Fediverse` `#Misskey` `#Sharkey` `#RSS` `#Blogging` `#Automation`
+- Optional weitere Hashtags passend zum Artikelinhalt
+
+**Beispiel-Prompt:**
+> Schreibe eine freundliche, neugierig machende Einleitung in exakt 50 Wörtern für den folgenden Artikel und füge danach fünf passende Hashtags hinzu.
+
 ## Verhalten
 - Nur Artikel mit Veröffentlichungsdatum, die älter als das konfigurierte Mindestalter sind, werden berücksichtigt.
 - URLs, die bereits in der Log-Datei stehen und innerhalb der letzten `days_old` Tage gepostet wurden, werden übersprungen.
