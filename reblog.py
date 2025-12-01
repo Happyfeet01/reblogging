@@ -15,7 +15,7 @@ from openai import OpenAI
 
 DEFAULT_FEED_URL = "https://dasnetzundich.de/category/anleitung/feed/"
 DEFAULT_DAYS_OLD = 180
-DEFAULT_MAX_POSTS = 0
+DEFAULT_MAX_POSTS = 1
 DEFAULT_POSTED_LOG = "./posted_urls.json"
 DEFAULT_VISIBILITY = "public"
 DEFAULT_LLM_MODEL = "gpt-5-mini"
@@ -206,7 +206,6 @@ def generate_with_llm(
                     ),
                 },
             ],
-            temperature=0.6,
         )
     except Exception as exc:  # pragma: no cover - API-Kommunikation
         print(f"[WARNUNG] OpenAI-Antwort fehlgeschlagen ({exc}). Fallback auf Standardtext.")
@@ -324,6 +323,8 @@ def main():
         return
 
     posted_log = load_posted_urls(config["posted_log"])
+    posts_made = 0
+
     for entry in entries:
         published = parse_entry_date(entry)
         if not published:
@@ -344,6 +345,10 @@ def main():
 
         if not config["dry_run"] and url:
             posted_log[url] = datetime.now(timezone.utc)
+
+        posts_made += 1
+        if posts_made >= 1:
+            break
 
     if not config["dry_run"]:
         save_posted_urls(config["posted_log"], posted_log)
