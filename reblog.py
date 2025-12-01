@@ -3,10 +3,12 @@ import json
 import os
 import pathlib
 import re
+from calendar import timegm
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional
 
 import feedparser
+import httpx
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -17,6 +19,27 @@ DEFAULT_MAX_POSTS = 0
 DEFAULT_POSTED_LOG = "./posted_urls.json"
 DEFAULT_VISIBILITY = "public"
 DEFAULT_LLM_MODEL = "gpt-5-mini"
+
+
+def ensure_httpx_proxy_support() -> None:
+    """Abort early if httpx version lacks ``proxies`` support.
+
+    OpenAI's client injects a ``proxies`` argument for compatibility with
+    environment-based proxy settings. httpx 0.28+ removed this parameter,
+    which results in ``TypeError: Client.__init__() got an unexpected keyword
+    argument 'proxies'``. Enforcing a compatible version up front provides a
+    clearer error message than failing deep inside the OpenAI client.
+    """
+
+    version = getattr(httpx, "__version__", "0")
+    parts = re.split(r"\D+", version)
+    parsed = tuple(int(p) for p in parts if p.isdigit())
+
+    if parsed and (parsed[0] > 0 or (parsed[0] == 0 and len(parsed) > 1 and parsed[1] >= 28)):
+        raise RuntimeError(
+            "httpx >= 0.28 entfernt die Unterstützung für 'proxies'. "
+            "Bitte installiere httpx<0.28 (z.B. per 'pip install -r requirements.txt')."
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,14 +114,22 @@ def fetch_feed(feed_url: str) -> feedparser.FeedParserDict:
 
 
 def parse_entry_date(entry) -> Optional[datetime]:
-    if hasattr(entry, "published_parsed") and entry.published_parsed:
-        return datetime.fromtimestamp(
-            feedparser.mktime_tz(entry.published_parsed), tz=timezone.utc
-        )
-    if hasattr(entry, "updated_parsed") and entry.updated_parsed:
-        return datetime.fromtimestamp(
-            feedparser.mktime_tz(entry.updated_parsed), tz=timezone.utc
-        )
+    for attr in ("published_parsed", "updated_parsed"):
+        parsed = getattr(entry, attr, None)
+        if parsed:
+            try:
+                timestamp = timegm(parsed)
+            except (TypeError, ValueError, OverflowError):
+                continue
+
+            offset = getattr(parsed, "tm_gmtoff", None)
+            if isinstance(offset, (int, float)):
+                timestamp -= offset
+
+            try:
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            except (OSError, OverflowError, ValueError):
+                continue
     return None
 
 
@@ -148,6 +179,7 @@ def generate_with_llm(
     if not api_key:
         return None
 
+    ensure_httpx_proxy_support()
     client = OpenAI(api_key=api_key)
     title = entry.get("title", "Ohne Titel")
     link = entry.get("link", "")
