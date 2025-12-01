@@ -96,8 +96,17 @@ def parse_entry_date(entry) -> Optional[datetime]:
         parsed = getattr(entry, attr, None)
         if parsed:
             try:
-                return datetime.fromtimestamp(timegm(parsed), tz=timezone.utc)
+                timestamp = timegm(parsed)
             except (TypeError, ValueError, OverflowError):
+                continue
+
+            offset = getattr(parsed, "tm_gmtoff", None)
+            if isinstance(offset, (int, float)):
+                timestamp -= offset
+
+            try:
+                return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            except (OSError, OverflowError, ValueError):
                 continue
     return None
 
