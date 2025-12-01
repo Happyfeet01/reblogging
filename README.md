@@ -5,6 +5,7 @@ Dieses Repository enthält ein kleines Python-Skript, das alte Artikel aus dem R
 ## Voraussetzungen
 - Python 3.11 oder neuer
 - Internetzugang, um den Feed abzurufen und die Sharkey-API zu erreichen
+- Optional: OpenAI-API-Schlüssel, falls die Textgenerierung über `gpt-5-mini` erfolgen soll
 
 ## Einrichtung
 1. Erstelle und aktiviere eine virtuelle Umgebung:
@@ -21,6 +22,7 @@ Dieses Repository enthält ein kleines Python-Skript, das alte Artikel aus dem R
    cp .env.example .env
    ```
 4. Hinterlege in der `.env` mindestens `SHARKEY_INSTANCE_URL` (z. B. `https://example.social`) und `SHARKEY_TOKEN` (persönliches API-Token mit Schreibrechten für Notizen).
+5. Für KI-generierte Texte trage zusätzlich `OPENAI_API_KEY` ein. Das verwendete Modell kann über `OPENAI_MODEL` angepasst werden (Standard: `gpt-5-mini`).
 
 ## Nutzung
 Das Skript lädt den Feed, filtert Beiträge, die älter als 180 Tage sind, und veröffentlicht sie als Notizen auf der angegebenen Sharkey/Misskey-Instanz. Im Dry-Run werden nur Vorschauen ausgegeben.
@@ -48,6 +50,10 @@ Das Skript lädt den Feed, filtert Beiträge, die älter als 180 Tage sind, und 
 - `SHARKEY_INSTANCE_URL`: Basis-URL der Instanz, z. B. `https://example.social`
 - `SHARKEY_TOKEN`: API-Token (persönliches Token mit Schreibrechten)
 - `SHARKEY_VISIBILITY`: Sichtbarkeit der Notiz (`public`, `home`, `followers`); Default: `public`
+
+### OpenAI-Variablen (optional)
+- `OPENAI_API_KEY`: API-Schlüssel zum Aufruf von OpenAI
+- `OPENAI_MODEL`: Modellname, z. B. `gpt-5-mini`
 
 ## Verhalten
 - Nur Artikel mit Veröffentlichungsdatum, die älter als das konfigurierte Mindestalter sind, werden berücksichtigt.

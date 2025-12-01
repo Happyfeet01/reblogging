@@ -9,12 +9,14 @@ from typing import Dict, Iterable, List, Optional
 import feedparser
 import requests
 from dotenv import load_dotenv
+from openai import OpenAI
 
 DEFAULT_FEED_URL = "https://dasnetzundich.de/category/anleitung/feed/"
 DEFAULT_DAYS_OLD = 180
 DEFAULT_MAX_POSTS = 0
 DEFAULT_POSTED_LOG = "./posted_urls.json"
 DEFAULT_VISIBILITY = "public"
+DEFAULT_LLM_MODEL = "gpt-5-mini"
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,6 +65,8 @@ def load_config(args: argparse.Namespace) -> dict:
         "sharkey_visibility": os.getenv(
             "SHARKEY_VISIBILITY", DEFAULT_VISIBILITY
         ),
+        "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "openai_model": os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
     }
 
 
@@ -132,6 +136,71 @@ def build_status(entry, published: datetime) -> str:
         parts.append(cleaned_summary)
     parts.append(f"(Original veröffentlicht am {published.date().isoformat()})")
     return "\n\n".join([part for part in parts if part])
+
+
+def generate_with_llm(
+    *,
+    entry,
+    published: datetime,
+    api_key: Optional[str],
+    model: str,
+) -> Optional[str]:
+    if not api_key:
+        return None
+
+    client = OpenAI(api_key=api_key)
+    title = entry.get("title", "Ohne Titel")
+    link = entry.get("link", "")
+    summary = clean_summary(entry.get("summary", entry.get("description", "")))
+    try:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Du schreibst kurze, sachliche deutsche Notizen für Sharkey/Misskey. "
+                        "Fasse den Inhalt eines Blogartikels freundlich zusammen, füge einen Hinweis "
+                        "auf das ursprüngliche Veröffentlichungsdatum hinzu und animiere zum Lesen."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Titel: {title}\n"
+                        f"Link: {link}\n"
+                        f"Veröffentlicht am: {published.date().isoformat()}\n"
+                        f"Zusammenfassung: {summary}"
+                    ),
+                },
+            ],
+            temperature=0.6,
+        )
+    except Exception as exc:  # pragma: no cover - API-Kommunikation
+        print(f"[WARNUNG] OpenAI-Antwort fehlgeschlagen ({exc}). Fallback auf Standardtext.")
+        return None
+
+    message = completion.choices[0].message.content if completion.choices else ""
+    generated = (message or "").strip()
+    return generated or None
+
+
+def compose_status(entry, published: datetime, config: dict) -> str:
+    ai_text = generate_with_llm(
+        entry=entry,
+        published=published,
+        api_key=config.get("openai_api_key"),
+        model=config.get("openai_model", DEFAULT_LLM_MODEL),
+    )
+    if ai_text:
+        link = entry.get("link", "")
+        parts = [ai_text]
+        if link:
+            parts.append(f"Mehr lesen: {link}")
+        parts.append(f"(Original veröffentlicht am {published.date().isoformat()})")
+        return "\n\n".join(parts)
+
+    return build_status(entry, published)
 
 
 def load_posted_urls(path: str) -> Dict[str, datetime]:
@@ -232,7 +301,7 @@ def main():
             print(f"Überspringe bereits geposteten Artikel: {url}")
             continue
 
-        status = build_status(entry, published)
+        status = compose_status(entry, published, config)
         publish_to_sharkey(
             config["sharkey_instance"],
             config["sharkey_token"],
