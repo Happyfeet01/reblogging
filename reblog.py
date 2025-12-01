@@ -3,11 +3,11 @@ import json
 import os
 import pathlib
 import re
+from calendar import timegm
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional
 
 import feedparser
-from feedparser.util import mktime_tz
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -92,14 +92,13 @@ def fetch_feed(feed_url: str) -> feedparser.FeedParserDict:
 
 
 def parse_entry_date(entry) -> Optional[datetime]:
-    if hasattr(entry, "published_parsed") and entry.published_parsed:
-        return datetime.fromtimestamp(
-            mktime_tz(entry.published_parsed), tz=timezone.utc
-        )
-    if hasattr(entry, "updated_parsed") and entry.updated_parsed:
-        return datetime.fromtimestamp(
-            mktime_tz(entry.updated_parsed), tz=timezone.utc
-        )
+    for attr in ("published_parsed", "updated_parsed"):
+        parsed = getattr(entry, attr, None)
+        if parsed:
+            try:
+                return datetime.fromtimestamp(timegm(parsed), tz=timezone.utc)
+            except (TypeError, ValueError, OverflowError):
+                continue
     return None
 
 
