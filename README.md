@@ -1,74 +1,99 @@
 # Reblogging & Sharkey-Publisher
 
-Dieses Repository enthält ein kleines Python-Skript, das alte Artikel aus dem RSS-Feed `https://dasnetzundich.de/category/anleitung/feed/` herausfiltert und direkt auf eine Sharkey/Misskey-Instanz veröffentlicht. Optional lässt sich ein Dry-Run durchführen. Bereits gepostete URLs werden in einer Log-Datei gespeichert, sodass Artikel, die in den letzten 180 Tagen veröffentlicht wurden, nicht erneut gepostet werden.
+Ein kleines Python-Skript, das täglich ältere Artikel aus einem RSS-Feed erneut veröffentlicht. Pro Lauf wird deterministisch der jeweils älteste, noch nicht gepostete Beitrag ausgewählt und als Notiz auf einer Sharkey/Misskey-Instanz geteilt. Bereits veröffentlichte Links werden in `posted_urls.json` festgehalten, damit nichts doppelt erscheint.
 
 ## Voraussetzungen
 - Python 3.11 oder neuer
-- Internetzugang, um den Feed abzurufen und die Sharkey-API zu erreichen
-- Optional: OpenAI-API-Schlüssel, falls die Textgenerierung über `gpt-5-mini` erfolgen soll
+- Internetzugang zum Abrufen des Feeds und zur Sharkey-API
+- Optional: OpenAI-API-Schlüssel, falls Texte mit `OPENAI_MODEL` generiert werden sollen (Standard: `gpt-5-mini`)
 
 ## Einrichtung
-1. Erstelle und aktiviere eine virtuelle Umgebung:
+1. Virtuelle Umgebung anlegen und aktivieren:
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    ```
-2. Installiere die Abhängigkeiten:
+2. Abhängigkeiten installieren:
    ```bash
    pip install -r requirements.txt
    ```
-3. Kopiere die Beispiel-Umgebungsvariablen und passe sie an, falls nötig:
-   ```bash
-   cp .env.example .env
-   ```
-4. Hinterlege in der `.env` mindestens `SHARKEY_INSTANCE_URL` (z. B. `https://example.social`) und `SHARKEY_TOKEN` (persönliches API-Token mit Schreibrechten für Notizen).
-5. Für KI-generierte Texte trage zusätzlich `OPENAI_API_KEY` ein. Das verwendete Modell kann über `OPENAI_MODEL` angepasst werden (Standard: `gpt-5-mini`).
+3. `.env` anlegen (siehe Konfiguration unten) und mindestens die Sharkey-Zugangsdaten setzen.
+
+## Konfiguration (.env)
+Folgende Variablen können in der `.env` hinterlegt werden:
+
+- `FEED_URL`: RSS-Feed-URL (z. B. `https://dasnetzundich.de/category/anleitung/feed/`)
+- `DAYS_OLD`: Mindestalter in Tagen, ab wann Beiträge repostet werden
+- `MAX_POSTS`: Anzahl der Posts pro Lauf (Empfehlung: `1` für genau einen täglichen Post)
+- `POSTED_LOG_PATH`: Pfad zur Logdatei (Standard: `./posted_urls.json`)
+- `SHARKEY_INSTANCE_URL`: Basis-URL der Instanz (z. B. `https://example.social`)
+- `SHARKEY_TOKEN`: Persönliches Token mit Schreibrechten
+- `SHARKEY_VISIBILITY`: Sichtbarkeit (`public`, `home`, `followers`); Standard: `public`
+- `OPENAI_API_KEY`: API-Schlüssel für OpenAI (optional)
+- `OPENAI_MODEL`: Modellname für die Zusammenfassung (Standard: `gpt-5-mini`)
 
 ## Nutzung
-Das Skript lädt den Feed, filtert Beiträge, die älter als 180 Tage sind, und veröffentlicht sie als Notizen auf der angegebenen Sharkey/Misskey-Instanz. Im Dry-Run werden nur Vorschauen ausgegeben.
+Das Skript lädt den Feed, wählt den ältesten passenden Beitrag, erzeugt den Posting-Text (optional per OpenAI) und veröffentlicht ihn.
 
-### Beispiele
-- Standardlauf mit den Werten aus der `.env`:
-  ```bash
-  python reblog.py
-  ```
-- Spezifische Parameter angeben (z. B. anderes Logfile und Trockenlauf):
-  ```bash
-  python reblog.py --posted-log ./data/posted_urls.json --dry-run
-  ```
+### Dry-run
+Zeigt nur die ausgewählten Beiträge und den geplanten Posting-Text, ohne zu veröffentlichen oder das Log zu schreiben:
 
-## Parameter
+```bash
+python reblog.py --dry-run
+```
+
+### Regulärer Lauf
+Verwendet die Werte aus der `.env` und schreibt ins Log:
+
+```bash
+python reblog.py
+```
+
+### Parameter (CLI oder `.env`)
 | Option | Beschreibung | Standard |
 | --- | --- | --- |
-| `--feed-url` | Feed-URL, aus der Artikel geladen werden | Wert aus `FEED_URL` oder der vorgegebene Feed |
+| `--feed-url` | RSS-Feed-URL | `FEED_URL` oder eingebauter Default |
 | `--days-old` | Mindestalter der Beiträge in Tagen | `DAYS_OLD` oder `180` |
-| `--max-posts` | Maximale Anzahl verarbeiteter Beiträge (0 = alle) | `MAX_POSTS` oder `0` |
-| `--posted-log` | Datei zum Speichern bereits geposteter URLs | `POSTED_LOG_PATH` oder `./posted_urls.json` |
-| `--dry-run` | Nur auflisten, keine Veröffentlichung | `False` |
+| `--max-posts` | Anzahl Posts pro Lauf (0 = alle passenden) | `MAX_POSTS` oder `0` |
+| `--posted-log` | Pfad zur Logdatei | `POSTED_LOG_PATH` oder `./posted_urls.json` |
+| `--dry-run` | Nur anzeigen, nichts posten | `False` |
 
-### Sharkey-spezifische Variablen
-- `SHARKEY_INSTANCE_URL`: Basis-URL der Instanz, z. B. `https://example.social`
-- `SHARKEY_TOKEN`: API-Token (persönliches Token mit Schreibrechten)
-- `SHARKEY_VISIBILITY`: Sichtbarkeit der Notiz (`public`, `home`, `followers`); Default: `public`
+## Verhalten & Auswahlregeln
+- Es wird immer der älteste Eintrag gepostet, der **älter als `DAYS_OLD`** ist und dessen URL noch nie im Log auftauchte.
+- Unterschiedliche Schreibweisen derselben URL werden durch Normalisierung erkannt und nicht doppelt gepostet.
+- Bei `MAX_POSTS=1` entsteht so genau ein neuer Post pro Tag (der Standardlauf arbeitet das Archiv nach und nach ab).
+- `MAX_POSTS>1` postet mehrere alte Einträge, beginnend mit dem ältesten noch nicht geposteten.
 
-### OpenAI-Variablen (optional)
-- `OPENAI_API_KEY`: API-Schlüssel zum Aufruf von OpenAI
-- `OPENAI_MODEL`: Modellname, z. B. `gpt-5-mini`
+## Format von `posted_urls.json`
+Die Datei enthält ein Array von Objekten. Jedes Objekt mindestens:
 
-### KI-Einleitung & Hashtags
-Wenn du OpenAI nutzt, weise das Modell an, eine kurze, einladende Einleitung mit genau 50 Wörtern zu verfassen, die Lust aufs Lesen des Artikels macht. Ergänze anschließend ein paar thematisch passende Hashtags, zum Beispiel:
+- `url`: normalisierte URL (ohne Query/Fragment, ohne abschließenden Slash, http→https)
+- `posted_at`: Zeitpunkt des Posts im ISO-8601-Format (z. B. `2025-12-22T23:00:00+01:00` oder `2025-12-22T22:00:00Z`)
 
-- `#Fediverse` `#Misskey` `#Sharkey` `#RSS` `#Blogging` `#Automation`
-- Optional weitere Hashtags passend zum Artikelinhalt
+Beispiel:
 
-**Beispiel-Prompt:**
-> Schreibe eine freundliche, neugierig machende Einleitung in exakt 50 Wörtern für den folgenden Artikel und füge danach fünf passende Hashtags hinzu.
+```json
+[
+  {
+    "url": "https://example.de/post-1",
+    "posted_at": "2024-03-01T10:00:00Z"
+  },
+  {
+    "url": "https://example.de/post-2",
+    "posted_at": "2024-03-02T10:00:00+01:00"
+  }
+]
+```
 
-## Verhalten
-- Nur Artikel mit Veröffentlichungsdatum, die älter als das konfigurierte Mindestalter sind, werden berücksichtigt.
-- URLs, die bereits in der Log-Datei stehen und innerhalb der letzten `days_old` Tage gepostet wurden, werden übersprungen.
-- Im Dry-Run wird die vorbereitete Notiz angezeigt, aber nicht veröffentlicht und nicht ins Log übernommen.
+Normalisierung bedeutet:
+- Query-Strings und Fragmente werden entfernt.
+- Abschließende Slashes werden entfernt.
+- Falls möglich, wird `http` zu `https` umgeschrieben.
 
-## Fehlerbehandlung
-- Beiträge ohne ermittelbares Veröffentlichungsdatum werden übersprungen.
-- Bei Netzwerkausfällen, einem ungültigen Feed oder einer fehlgeschlagenen Sharkey-Verbindung bricht das Skript mit einer verständlichen Fehlermeldung ab.
+Beispiel: `https://example.de/post/?utm_source=x#section` wird als `https://example.de/post` gespeichert. Die Datei muss gültiges JSON enthalten und darf nicht leer sein.
+
+## Troubleshooting
+- **“Es wird immer derselbe Artikel gepostet.”** Stelle sicher, dass `MAX_POSTS` auf `1` steht **und** die Logdatei gültig ist. Die Auswahl erfolgt nach dem Entfernen bereits geposteter URLs.
+- **Log leer oder ungültig?** Prüfe, ob `posted_urls.json` gültiges JSON ist und die Struktur wie oben gezeigt hat.
+- **Keine neuen Beiträge gefunden?** Dann waren entweder alle alten Beiträge schon im Log oder es gibt keine Beiträge, die älter als `DAYS_OLD` sind.
+
