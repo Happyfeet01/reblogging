@@ -6,6 +6,7 @@ import re
 from calendar import timegm
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Iterable, List, Optional
+from urllib.parse import urlparse, urlunparse
 
 import feedparser
 import httpx
@@ -75,6 +76,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def normalize_url(url: str) -> str:
+    url = (url or "").strip()
+    if not url:
+        return ""
+
+    parsed = urlparse(url)
+    scheme = "https" if parsed.scheme == "http" else parsed.scheme
+    path = parsed.path.rstrip("/")
+    normalized = parsed._replace(scheme=scheme, path=path, query="", fragment="")
+    return urlunparse(normalized)
+
+
 def load_config(args: argparse.Namespace) -> dict:
     load_dotenv()
     return {
@@ -133,9 +146,7 @@ def parse_entry_date(entry) -> Optional[datetime]:
     return None
 
 
-def select_old_entries(
-    entries: Iterable, cutoff: datetime, max_posts: int
-) -> List[feedparser.FeedParserDict]:
+def select_old_entries(entries: Iterable, cutoff: datetime) -> List[feedparser.FeedParserDict]:
     selected = []
     for entry in entries:
         published = parse_entry_date(entry)
@@ -144,10 +155,6 @@ def select_old_entries(
         if published <= cutoff:
             selected.append((published, entry))
     selected.sort(key=lambda item: item[0])
-
-    if max_posts and max_posts > 0:
-        selected = selected[:max_posts]
-
     return [entry for _, entry in selected]
 
 
@@ -206,7 +213,6 @@ def generate_with_llm(
                     ),
                 },
             ],
-            temperature=0.6,
         )
     except Exception as exc:  # pragma: no cover - API-Kommunikation
         print(f"[WARNUNG] OpenAI-Antwort fehlgeschlagen ({exc}). Fallback auf Standardtext.")
@@ -241,12 +247,21 @@ def load_posted_urls(path: str) -> Dict[str, datetime]:
         return {}
     try:
         raw = json.loads(posted_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:  # pragma: no cover - defensive JSON-Parsing
+        raise ValueError(
+            f"Log-Datei {posted_file} enthält kein gültiges JSON: {exc}"
+        ) from exc
     except Exception as exc:  # pragma: no cover - defensive JSON-Parsing
         raise ValueError(f"Konnte Log-Datei {posted_file} nicht lesen: {exc}") from exc
 
+    if not isinstance(raw, list):
+        raise ValueError(f"Log-Datei {posted_file} muss eine Liste enthalten.")
+
     posted: Dict[str, datetime] = {}
     for item in raw:
-        url = item.get("url")
+        if not isinstance(item, dict):
+            continue
+        url = normalize_url(item.get("url", ""))
         posted_at = item.get("posted_at")
         if not url or not posted_at:
             continue
@@ -266,14 +281,14 @@ def save_posted_urls(path: str, posted: Dict[str, datetime]):
     payload = [
         {"url": url, "posted_at": ts.isoformat()} for url, ts in sorted(posted.items())
     ]
-    posted_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    posted_file.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
 
 
-def was_recently_posted(url: str, posted: Dict[str, datetime], cutoff: datetime) -> bool:
-    if not url:
-        return False
-    posted_at = posted.get(url)
-    return bool(posted_at and posted_at >= cutoff)
+def was_posted_ever(url: str, posted: Dict[str, datetime]) -> bool:
+    normalized = normalize_url(url)
+    return bool(normalized and normalized in posted)
 
 
 def publish_to_sharkey(
@@ -311,26 +326,38 @@ def main():
     config = load_config(args)
 
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=config["days_old"])
-    posted_cutoff = datetime.now(timezone.utc) - timedelta(days=config["days_old"])
     print(
         f"Lade Feed {config['feed_url']} und filtere Beiträge älter als {config['days_old']} Tage..."
     )
 
     feed = fetch_feed(config["feed_url"])
-    entries = select_old_entries(feed.entries, cutoff_date, config["max_posts"])
+    entries = select_old_entries(feed.entries, cutoff_date)
 
     if not entries:
         print("Keine passenden Beiträge gefunden.")
         return
 
     posted_log = load_posted_urls(config["posted_log"])
+    candidates = []
     for entry in entries:
+        url = entry.get("link")
+        if not url:
+            continue
+        if was_posted_ever(url, posted_log):
+            print(f"Überspringe bereits geposteten Artikel: {url}")
+            continue
+        candidates.append(entry)
+
+    if not candidates:
+        print("Keine neuen (noch nicht geposteten) Beiträge gefunden.")
+        return
+
+    max_posts = config["max_posts"]
+    to_post = candidates[: max_posts] if max_posts and max_posts > 0 else candidates[:1]
+
+    for entry in to_post:
         published = parse_entry_date(entry)
         if not published:
-            continue
-        url = entry.get("link")
-        if was_recently_posted(url, posted_log, posted_cutoff):
-            print(f"Überspringe bereits geposteten Artikel: {url}")
             continue
 
         status = compose_status(entry, published, config)
@@ -342,8 +369,9 @@ def main():
             config["dry_run"],
         )
 
+        url = entry.get("link")
         if not config["dry_run"] and url:
-            posted_log[url] = datetime.now(timezone.utc)
+            posted_log[normalize_url(url)] = datetime.now(timezone.utc)
 
     if not config["dry_run"]:
         save_posted_urls(config["posted_log"], posted_log)
