@@ -26,6 +26,7 @@ Folgende Variablen können in der `.env` hinterlegt werden:
 - `DAYS_OLD`: Mindestalter in Tagen, ab wann Beiträge repostet werden
 - `MAX_POSTS`: Anzahl der Posts pro Lauf (Empfehlung: `1` für genau einen täglichen Post)
 - `POSTED_LOG_PATH`: Pfad zur Logdatei (Standard: `./posted_urls.json`)
+- `POSTED_LOG_KEEP`: Anzahl der neuesten Einträge, die im Log bleiben sollen (Standard: `0` = unbegrenzt)
 - `SHARKEY_INSTANCE_URL`: Basis-URL der Instanz (z. B. `https://example.social`)
 - `SHARKEY_TOKEN`: Persönliches Token mit Schreibrechten
 - `SHARKEY_VISIBILITY`: Sichtbarkeit (`public`, `home`, `followers`); Standard: `public`
@@ -56,6 +57,7 @@ python reblog.py
 | `--days-old` | Mindestalter der Beiträge in Tagen | `DAYS_OLD` oder `180` |
 | `--max-posts` | Anzahl Posts pro Lauf (0 = alle passenden) | `MAX_POSTS` oder `0` |
 | `--posted-log` | Pfad zur Logdatei | `POSTED_LOG_PATH` oder `./posted_urls.json` |
+| `--posted-log-keep` | Behält nur die letzten N URL-Einträge im Log (0 = unbegrenzt) | `POSTED_LOG_KEEP` oder `0` |
 | `--dry-run` | Nur anzeigen, nichts posten | `False` |
 
 ## Verhalten & Auswahlregeln
@@ -63,6 +65,7 @@ python reblog.py
 - Unterschiedliche Schreibweisen derselben URL werden durch Normalisierung erkannt und nicht doppelt gepostet.
 - Bei `MAX_POSTS=1` entsteht so genau ein neuer Post pro Tag (der Standardlauf arbeitet das Archiv nach und nach ab).
 - `MAX_POSTS>1` postet mehrere alte Einträge, beginnend mit dem ältesten noch nicht geposteten.
+- Mit `POSTED_LOG_KEEP` kannst du steuern, dass alte URL-Einträge automatisch aus `posted_urls.json` gelöscht werden. Beispiel: `POSTED_LOG_KEEP=200` behält nur die 200 zuletzt geposteten URLs; ältere können später wieder rebloggt werden.
 
 ## Format von `posted_urls.json`
 Die Datei enthält ein Array von Objekten. Jedes Objekt mindestens:
@@ -95,5 +98,5 @@ Beispiel: `https://example.de/post/?utm_source=x#section` wird als `https://exam
 ## Troubleshooting
 - **“Es wird immer derselbe Artikel gepostet.”** Stelle sicher, dass `MAX_POSTS` auf `1` steht **und** die Logdatei gültig ist. Die Auswahl erfolgt nach dem Entfernen bereits geposteter URLs.
 - **Log leer oder ungültig?** Prüfe, ob `posted_urls.json` gültiges JSON ist und die Struktur wie oben gezeigt hat.
+- **Artikel sollen nach einiger Zeit wieder erscheinen?** Setze `POSTED_LOG_KEEP` (oder `--posted-log-keep`) auf einen sinnvollen Wert > 0, damit die ältesten URL-Einträge regelmäßig entfernt werden.
 - **Keine neuen Beiträge gefunden?** Dann waren entweder alle alten Beiträge schon im Log oder es gibt keine Beiträge, die älter als `DAYS_OLD` sind.
-
