@@ -18,6 +18,7 @@ DEFAULT_FEED_URL = "https://dasnetzundich.de/category/anleitung/feed/"
 DEFAULT_DAYS_OLD = 180
 DEFAULT_MAX_POSTS = 0
 DEFAULT_POSTED_LOG = "./posted_urls.json"
+DEFAULT_POSTED_LOG_KEEP = 0
 DEFAULT_VISIBILITY = "public"
 DEFAULT_LLM_MODEL = "gpt-5-mini"
 
@@ -69,6 +70,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
     )
     parser.add_argument(
+        "--posted-log-keep",
+        type=int,
+        help=(
+            "Wie viele der zuletzt geposteten URLs im Log behalten werden sollen "
+            "(0 = unbegrenzt). Ältere Einträge werden entfernt und können erneut "
+            "rebloggt werden."
+        ),
+        default=None,
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Listet nur die gefundenen Beiträge, ohne zu veröffentlichen",
@@ -95,6 +106,12 @@ def load_config(args: argparse.Namespace) -> dict:
         "days_old": int(os.getenv("DAYS_OLD", args.days_old or DEFAULT_DAYS_OLD)),
         "max_posts": int(os.getenv("MAX_POSTS", args.max_posts or DEFAULT_MAX_POSTS)),
         "posted_log": args.posted_log or os.getenv("POSTED_LOG_PATH", DEFAULT_POSTED_LOG),
+        "posted_log_keep": int(
+            os.getenv(
+                "POSTED_LOG_KEEP",
+                args.posted_log_keep if args.posted_log_keep is not None else DEFAULT_POSTED_LOG_KEEP,
+            )
+        ),
         "dry_run": args.dry_run,
         "sharkey_instance": os.getenv("SHARKEY_INSTANCE_URL"),
         "sharkey_token": os.getenv("SHARKEY_TOKEN"),
@@ -286,6 +303,19 @@ def save_posted_urls(path: str, posted: Dict[str, datetime]):
     )
 
 
+def prune_posted_log(posted: Dict[str, datetime], keep: int) -> Dict[str, datetime]:
+    if keep <= 0 or len(posted) <= keep:
+        return posted
+
+    sorted_items = sorted(posted.items(), key=lambda item: item[1], reverse=True)
+    trimmed = dict(sorted_items[:keep])
+    removed = len(posted) - len(trimmed)
+    print(
+        f"Log bereinigt: {removed} älteste URL(s) entfernt, damit sie wieder repostet werden können."
+    )
+    return trimmed
+
+
 def was_posted_ever(url: str, posted: Dict[str, datetime]) -> bool:
     normalized = normalize_url(url)
     return bool(normalized and normalized in posted)
@@ -374,6 +404,7 @@ def main():
             posted_log[normalize_url(url)] = datetime.now(timezone.utc)
 
     if not config["dry_run"]:
+        posted_log = prune_posted_log(posted_log, config["posted_log_keep"])
         save_posted_urls(config["posted_log"], posted_log)
 
 
