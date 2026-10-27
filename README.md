@@ -100,3 +100,14 @@ Beispiel: `https://example.de/post/?utm_source=x#section` wird als `https://exam
 - **Log leer oder ungültig?** Prüfe, ob `posted_urls.json` gültiges JSON ist und die Struktur wie oben gezeigt hat.
 - **Artikel sollen nach einiger Zeit wieder erscheinen?** Setze `POSTED_LOG_KEEP` (oder `--posted-log-keep`) auf einen sinnvollen Wert > 0, damit die ältesten URL-Einträge regelmäßig entfernt werden.
 - **Keine neuen Beiträge gefunden?** Dann waren entweder alle alten Beiträge schon im Log oder es gibt keine Beiträge, die älter als `DAYS_OLD` sind.
+
+
+---
+
+### Support / Unterstützung
+
+If my open-source contributions are useful to you, you can support my work voluntarily. Feedback, bug reports and contributions are just as welcome.
+
+Wenn dir meine Open-Source-Beiträge helfen, freue ich mich über freiwillige Unterstützung. Auch Feedback, Fehlermeldungen und Pull Requests helfen weiter.
+
+[Buy Me a Coffee](https://buymeacoffee.com/sly5ir9ov) · [PayPal](https://paypal.me/LarsM1980)
